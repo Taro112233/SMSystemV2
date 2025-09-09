@@ -24,7 +24,6 @@ model Organization {
   
   // Feature Settings
   allowDepartments    Boolean    @default(true)
-  allowCustomRoles    Boolean    @default(true)
   
   // Timestamps
   createdAt   DateTime           @default(now())
@@ -32,8 +31,6 @@ model Organization {
   
   // Relations
   users               OrganizationUser[]
-  roles               OrganizationRole[]
-  userRoles           OrganizationUserRole[]
   departments         Department[]
   productCategories   ProductCategory[]
   productTypes        ProductType[]     // Added for custom product types
@@ -69,7 +66,7 @@ model OrganizationUser {
   // Relations
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  roles          OrganizationUserRole[]
+  roles          OrganizationRole @default(MEMBER)
   
   @@unique([organizationId, userId])
   @@index([isActive])

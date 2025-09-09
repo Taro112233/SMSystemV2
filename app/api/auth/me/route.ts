@@ -1,4 +1,4 @@
-// app/api/auth/me/route.ts - FIXED TYPE ISSUES
+// app/api/auth/me/route.ts - FIXED FOR 3-ROLE SYSTEM
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerUser, getUserFromHeaders } from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
         organization: {
           select: {
             id: true, name: true, slug: true, description: true, logo: true,
-            status: true, timezone: true, currency: true, allowDepartments: true, allowCustomRoles: true,
+            status: true, timezone: true, currency: true, allowDepartments: true,
           }
         }
       },
@@ -59,25 +59,8 @@ export async function GET(request: NextRequest) {
       const firstOrg = userOrganizations[0];
       currentOrganization = firstOrg.organization;
       
-      const roleAssignment = await prisma.organizationUserRole.findUnique({
-        where: {
-          organizationId_userId: {
-            organizationId: firstOrg.organizationId,
-            userId: user.userId // Fix: user is now guaranteed to be non-null
-          },
-          isActive: true
-        },
-        include: {
-          role: {
-            select: {
-              id: true, name: true, description: true, color: true, icon: true,
-              position: true, isDefault: true, isSystemRole: true,
-            }
-          }
-        }
-      });
-      
-      if (roleAssignment) userRole = roleAssignment.role;
+      // Use simple role from OrganizationUser instead of complex role system
+      userRole = firstOrg.roles; // This is 'MEMBER' | 'ADMIN' | 'OWNER'
     }
 
     const dbUser = await prisma.user.findUnique({

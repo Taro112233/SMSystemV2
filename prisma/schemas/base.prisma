@@ -48,16 +48,11 @@ enum ProductStatus {
   RESTRICTED   // จำกัดการใช้
 }
 
-// ===== PERMISSION SYSTEM ENUMS =====
-enum PermissionAction {
-  CREATE
-  READ
-  UPDATE
-  DELETE
-  APPROVE
-  MANAGE
-  EXPORT
-  IMPORT
+// ===== ROLE SYSTEM ENUMS =====
+enum OrganizationRole {
+  MEMBER  // ทำงานทั่วไป เบิก จ่าย แก้สต็อก
+  ADMIN   // Member + CRUD สต็อกการ์ด + สร้าง category + เชิญผู้ใช้
+  OWNER   // Admin + CRUD department + จัดการองค์กร
 }
 
 // ===== STOCK TRANSACTION ENUMS =====

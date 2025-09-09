@@ -1,6 +1,6 @@
 // This file is auto-generated. Do not edit manually.
 // Edit files in prisma/schemas/ directory instead.
-// Last generated: 2025-09-07T17:15:07.436Z
+// Last generated: 2025-09-09T14:36:47.154Z
 // InvenStock - Multi-Tenant Inventory Management System V1.0
 
 generator client {
@@ -69,16 +69,11 @@ enum ProductStatus {
   RESTRICTED   // จำกัดการใช้
 }
 
-// ===== PERMISSION SYSTEM ENUMS =====
-enum PermissionAction {
-  CREATE
-  READ
-  UPDATE
-  DELETE
-  APPROVE
-  MANAGE
-  EXPORT
-  IMPORT
+// ===== ROLE SYSTEM ENUMS =====
+enum OrganizationRole {
+  MEMBER  // ทำงานทั่วไป เบิก จ่าย แก้สต็อก
+  ADMIN   // Member + CRUD สต็อกการ์ด + สร้าง category + เชิญผู้ใช้
+  OWNER   // Admin + CRUD department + จัดการองค์กร
 }
 
 // ===== STOCK TRANSACTION ENUMS =====
@@ -248,7 +243,6 @@ model User {
   
   // Relations
   organizationUsers     OrganizationUser[]
-  organizationUserRoles OrganizationUserRole[]
   sentInvitations       UserInvitation[] @relation("InviterUser")
   receivedInvitations   UserInvitation[] @relation("InviteeUser")
   stockTransactions     StockTransaction[]
@@ -337,7 +331,6 @@ model Organization {
   
   // Feature Settings
   allowDepartments    Boolean    @default(true)
-  allowCustomRoles    Boolean    @default(true)
   
   // Timestamps
   createdAt   DateTime           @default(now())
@@ -345,8 +338,6 @@ model Organization {
   
   // Relations
   users               OrganizationUser[]
-  roles               OrganizationRole[]
-  userRoles           OrganizationUserRole[]
   departments         Department[]
   productCategories   ProductCategory[]
   productTypes        ProductType[]     // Added for custom product types
@@ -382,7 +373,7 @@ model OrganizationUser {
   // Relations
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  roles          OrganizationUserRole[]
+  roles          OrganizationRole @default(MEMBER)
   
   @@unique([organizationId, userId])
   @@index([isActive])
@@ -453,138 +444,6 @@ model OrganizationSetting {
   @@unique([organizationId, key])
   @@index([key])
   @@map("organization_settings")
-}
-
-// ==========================================
-// PERMISSION SCHEMA - V1.0
-// ==========================================
-
-// prisma/schemas/permission.prisma
-// ===== DISCORD-LIKE PERMISSION SYSTEM - InvenStock V1.0 =====
-
-// Permission Categories (for organization)
-model PermissionCategory {
-  id          String       @id @default(cuid())
-  name        String       // e.g., "products", "stock", "transfers"
-  displayName String       // e.g., "การจัดการสินค้า"
-  description String?
-  icon        String?      // Icon for UI
-  sortOrder   Int          @default(0)
-  isActive    Boolean      @default(true)
-  
-  // Relations
-  permissions Permission[]
-  
-  @@unique([name])
-  @@index([sortOrder])
-  @@map("permission_categories")
-}
-
-// System-wide Permissions
-model Permission {
-  id          String             @id @default(cuid())
-  categoryId  String
-  name        String             // e.g., "products.create"
-  displayName String             // e.g., "สร้างสินค้าใหม่"
-  description String?
-  action      PermissionAction
-  resource    String             // e.g., "products", "stock"
-  
-  // Permission Settings
-  isWildcard  Boolean            @default(false) // For *.* permissions
-  sortOrder   Int                @default(0)
-  isActive    Boolean            @default(true)
-  
-  // Relations
-  category    PermissionCategory @relation(fields: [categoryId], references: [id])
-  rolePermissions OrganizationRolePermission[]
-  
-  @@unique([name])
-  @@index([resource])
-  @@index([action])
-  @@map("permissions")
-}
-
-// Custom Roles per Organization (Discord-like)
-model OrganizationRole {
-  id             String       @id @default(cuid())
-  organizationId String
-  
-  // Role Details
-  name           String       // e.g., "ผู้จัดการคลัง"
-  description    String?
-  color          ColorTheme?    // แทน String?
-  icon           IconType?      // แทน String?
-  
-  // Role Settings
-  position       Int          @default(0) // Higher = more priority
-  isDefault      Boolean      @default(false) // Auto-assign to new users
-  isSystemRole   Boolean      @default(false) // Cannot be deleted
-  
-  // Status
-  isActive       Boolean      @default(true)
-  
-  // Audit Fields
-  createdBy      String       // User who created
-  updatedBy      String?      // User who last updated
-  
-  // Timestamps
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  
-  // Relations
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  permissions    OrganizationRolePermission[]
-  userRoles      OrganizationUserRole[]
-  
-  @@unique([organizationId, name])
-  @@index([position])
-  @@index([isDefault])
-  @@map("organization_roles")
-}
-
-// Role-Permission Mapping
-model OrganizationRolePermission {
-  id           String           @id @default(cuid())
-  roleId       String
-  permissionId String
-  
-  // Permission Value
-  allowed      Boolean          @default(true)
-  
-  // Relations
-  role         OrganizationRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission   Permission       @relation(fields: [permissionId], references: [id])
-  
-  @@unique([roleId, permissionId])
-  @@map("organization_role_permissions")
-}
-
-// User-Role Assignment (One Role per User per Organization)
-model OrganizationUserRole {
-  id             String           @id @default(cuid())
-  organizationId String
-  userId         String
-  roleId         String
-  
-  // Assignment Details
-  assignedBy     String?          // Who assigned this role
-  assignedAt     DateTime         @default(now())
-  expiresAt      DateTime?        // Optional expiry
-  
-  // Status
-  isActive       Boolean          @default(true)
-  
-  // Relations
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role           OrganizationRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  organizationUser OrganizationUser @relation(fields: [organizationId, userId], references: [organizationId, userId], onDelete: Cascade)
-  
-  @@unique([organizationId, userId]) // 🔥 1 คน = 1 role ต่อ 1 องค์กร
-  @@index([isActive])
-  @@index([expiresAt])
-  @@map("organization_user_roles")
 }
 
 // ==========================================
@@ -1144,64 +1003,4 @@ interface AuditPayload {
   'transfers.approve': { transferNumber: string; totalValue: number; itemCount: number };
   // ... add more as needed
 }
-*/
-
-// ===== USAGE EXAMPLES =====
-/*
-// TypeScript service for logging
-class AuditService {
-  static async log(
-    organizationId: string,
-    userId: string | null,
-    action: AuditAction,
-    resourceId?: string,
-    payload?: any
-  ) {
-    return prisma.auditLog.create({
-      data: {
-        organizationId,
-        userId,
-        action,
-        resourceId,
-        payload: payload || null
-      }
-    });
-  }
-
-  // High-level logging methods
-  static async logProductCreation(orgId: string, userId: string, product: Product) {
-    return this.log(orgId, userId, 'products.create', product.id, {
-      name: product.name,
-      code: product.orgProductCode,
-      category: product.category?.name
-    });
-  }
-
-  static async logStockAdjustment(orgId: string, userId: string, adjustment: StockAdjustment) {
-    return this.log(orgId, userId, 'stock.adjust', adjustment.stockId, {
-      product: adjustment.product.name,
-      from: adjustment.oldQty,
-      to: adjustment.newQty,
-      reason: adjustment.reason
-    });
-  }
-
-  static async logTransferApproval(orgId: string, userId: string, transfer: Transfer) {
-    return this.log(orgId, userId, 'transfers.approve', transfer.id, {
-      transferNumber: transfer.transferNumber,
-      totalValue: transfer.totalValue,
-      itemCount: transfer.totalItems
-    });
-  }
-}
-*/
-
-// ===== PERFORMANCE BENEFITS =====
-/*
-✅ 75% storage reduction (1-2KB → 200-500 bytes per record)
-✅ 60% faster queries (simplified structure + optimized indexes)
-✅ 90% easier maintenance (single model vs complex relations)
-✅ Type-safe logging with TypeScript integration
-✅ Action-based filtering for reports and compliance
-✅ Flexible payload system for future requirements
 */

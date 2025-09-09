@@ -1,4 +1,4 @@
-// app/api/auth/register/route.ts - WORKING VERSION
+// app/api/auth/register/route.ts - FIXED FOR 3-ROLE SYSTEM
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, createToken, getCookieOptions, userToPayload } from '@/lib/auth';
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
             name: cleanOrgName, slug, 
             description: `Organization created by ${newUser.firstName} ${newUser.lastName}`,
             status: 'ACTIVE', timezone: 'Asia/Bangkok', currency: 'THB',
-            allowDepartments: true, allowCustomRoles: true,
+            allowDepartments: true, // Remove allowCustomRoles
           },
           select: {
             id: true, name: true, slug: true, description: true, logo: true,
@@ -95,29 +95,16 @@ export async function POST(request: NextRequest) {
           }
         });
 
+        // Create OrganizationUser with simple role instead of complex role system
         await tx.organizationUser.create({
           data: {
             organizationId: organization.id, userId: newUser.id,
+            roles: 'OWNER', // Simple role assignment
             isOwner: true, isActive: true, joinedAt: new Date(),
           }
         });
 
-        const ownerRole = await tx.organizationRole.create({
-          data: {
-            organizationId: organization.id, name: 'เจ้าขององค์กร',
-            description: 'เจ้าขององค์กร - มีสิทธิ์ทุกอย่าง',
-            color: 'BLUE', icon: 'CROWN', position: 1000,
-            isDefault: false, isSystemRole: true, isActive: true, createdBy: newUser.id,
-          }
-        });
-
-        await tx.organizationUserRole.create({
-          data: {
-            organizationId: organization.id, userId: newUser.id, roleId: ownerRole.id,
-            assignedBy: newUser.id, assignedAt: new Date(), isActive: true,
-          }
-        });
-
+        // Create audit log
         await tx.auditLog.create({
           data: {
             organizationId: organization.id, userId: newUser.id, action: 'users.register',
@@ -135,7 +122,7 @@ export async function POST(request: NextRequest) {
 
     const userPayload = userToPayload(result.newUser);
     const token = result.organization ? 
-      await createToken({ ...userPayload, organizationId: result.organization.id }) :
+      await createToken({ ...userPayload, organizationId: result.organization.id, role: 'OWNER' }) :
       await createToken(userPayload);
 
     const userResponse = {

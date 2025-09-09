@@ -1,4 +1,4 @@
-// app/utils/auth.tsx - COMPLETE VERSION
+// app/utils/auth.tsx - SIMPLIFIED 3-ROLE SYSTEM
 // InvenStock - Username-based Authentication Hooks
 
 'use client';
@@ -21,7 +21,9 @@ import {
   getStoredOrganizationData,
   clearStoredUserData,
   parseAuthError,
-  isAuthError
+  isAuthError,
+  hasPermission,
+  isMinimumRole
 } from './auth-client';
 
 // ===== AUTHENTICATION CONTEXT =====
@@ -30,6 +32,7 @@ interface AuthContextType {
   user: User | null;
   currentOrganization: Organization | null;
   organizations: OrganizationUser[];
+  userRole: 'MEMBER' | 'ADMIN' | 'OWNER' | null;  // Current role in organization
   loading: boolean;
   error: string | null;
   login: (credentials: LoginRequest) => Promise<void>;
@@ -38,6 +41,8 @@ interface AuthContextType {
   switchOrg: (organizationId: string) => Promise<void>;
   refreshUser: () => Promise<void>;
   clearError: () => void;
+  hasPermission: (permission: string) => boolean;
+  hasMinimumRole: (minimumRole: 'MEMBER' | 'ADMIN' | 'OWNER') => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,6 +57,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
   const [organizations, setOrganizations] = useState<OrganizationUser[]>([]);
+  const [userRole, setUserRole] = useState<'MEMBER' | 'ADMIN' | 'OWNER' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,6 +65,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const clearError = useCallback(() => {
     setError(null);
   }, []);
+
+  // Permission checking helpers
+  const checkPermission = useCallback((permission: string): boolean => {
+    if (!userRole) return false;
+    return hasPermission(userRole, permission);
+  }, [userRole]);
+
+  const checkMinimumRole = useCallback((minimumRole: 'MEMBER' | 'ADMIN' | 'OWNER'): boolean => {
+    if (!userRole) return false;
+    return isMinimumRole(userRole, minimumRole);
+  }, [userRole]);
 
   // Login function with multi-tenant support
   const login = useCallback(async (credentials: LoginRequest) => {
@@ -71,20 +88,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(response.user);
       setOrganizations(response.organizations || []);
       
-      // Set default organization (first one or none)
-      const defaultOrg = response.organizations?.[0]?.organization;
-      if (defaultOrg) {
-        setCurrentOrganization(defaultOrg);
-        storeOrganizationData(defaultOrg);
+      // Set default organization and role (first one or none)
+      const defaultOrgUser = response.organizations?.[0];
+      if (defaultOrgUser) {
+        setCurrentOrganization(defaultOrgUser.organization);
+        setUserRole(defaultOrgUser.role);
+        storeOrganizationData(defaultOrgUser.organization);
       }
       
       storeUserData(response.user);
       
-      console.log('✅ Login successful:', response.user.username);
+      console.log('Login successful:', response.user.username);
     } catch (err) {
       const errorMessage = parseAuthError(err);
       setError(errorMessage);
-      console.error('❌ Login failed:', errorMessage);
+      console.error('Login failed:', errorMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -99,7 +117,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const response = await registerUser(userData);
       
-      console.log('✅ Registration successful:', response.user.username);
+      console.log('Registration successful:', response.user.username);
       
       // If no approval required, log them in
       if (!response.requiresApproval && response.token) {
@@ -108,10 +126,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         
         if (response.organization) {
           setCurrentOrganization(response.organization);
+          setUserRole('OWNER'); // Creator is automatically owner
           setOrganizations([{
             id: 'temp',
             organizationId: response.organization.id,
             userId: response.user.id,
+            role: 'OWNER',
             isOwner: true,
             joinedAt: new Date(),
             isActive: true,
@@ -125,7 +145,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (err) {
       const errorMessage = parseAuthError(err);
       setError(errorMessage);
-      console.error('❌ Registration failed:', errorMessage);
+      console.error('Registration failed:', errorMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -141,15 +161,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(null);
       setCurrentOrganization(null);
       setOrganizations([]);
+      setUserRole(null);
       clearStoredUserData();
       
-      console.log('✅ Logout successful');
+      console.log('Logout successful');
     } catch (err) {
-      console.error('❌ Logout failed:', parseAuthError(err));
+      console.error('Logout failed:', parseAuthError(err));
       // Even if logout fails, clear local state
       setUser(null);
       setCurrentOrganization(null);
       setOrganizations([]);
+      setUserRole(null);
       clearStoredUserData();
     } finally {
       setLoading(false);
@@ -165,13 +187,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await switchOrganization(organizationId);
       
       setCurrentOrganization(response.organization);
+      setUserRole(response.role);
       storeOrganizationData(response.organization);
       
-      console.log('✅ Switched to organization:', response.organization.name);
+      console.log('Switched to organization:', response.organization.name);
     } catch (err) {
       const errorMessage = parseAuthError(err);
       setError(errorMessage);
-      console.error('❌ Failed to switch organization:', errorMessage);
+      console.error('Failed to switch organization:', errorMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -189,21 +212,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       if (data.currentOrganization) {
         setCurrentOrganization(data.currentOrganization);
+        // Find user's role in current organization
+        const currentOrgUser = data.organizations.find(
+          org => org.organizationId === data.currentOrganization?.id
+        );
+        if (currentOrgUser) {
+          setUserRole(currentOrgUser.role);
+        }
         storeOrganizationData(data.currentOrganization);
       }
       
       storeUserData(data.user);
       
-      console.log('✅ User data refreshed');
+      console.log('User data refreshed');
     } catch (err) {
       if (isAuthError(err)) {
         // Clear user data if authentication failed
         setUser(null);
         setCurrentOrganization(null);
         setOrganizations([]);
+        setUserRole(null);
         clearStoredUserData();
       }
-      console.error('❌ Failed to refresh user:', parseAuthError(err));
+      console.error('Failed to refresh user:', parseAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -215,18 +246,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         setLoading(true);
         
-        // ✅ QUICK FIX: เช็ค cookie ก่อน
+        // Check cookie first
         const hasCookie = typeof document !== 'undefined' && 
                          document.cookie.includes('auth-token=');
         
         if (!hasCookie) {
-          console.log('🚫 No auth cookie found, skipping auth check');
+          console.log('No auth cookie found, skipping auth check');
           setLoading(false);
           return;
         }
         
-        // มี cookie แล้ว ค่อยไป refresh
-        console.log('🔄 Auth cookie found, verifying with server...');
+        // Has cookie, verify with server
+        console.log('Auth cookie found, verifying with server...');
         
         // Load stored data first for immediate UI update
         const storedUser = getStoredUserData();
@@ -242,7 +273,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         await refreshUser();
         
       } catch (err) {
-        console.error('❌ Auth initialization failed:', parseAuthError(err));
+        console.error('Auth initialization failed:', parseAuthError(err));
         setLoading(false);
       }
     };
@@ -254,6 +285,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     currentOrganization,
     organizations,
+    userRole,
     loading,
     error,
     login,
@@ -262,6 +294,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     switchOrg,
     refreshUser,
     clearError,
+    hasPermission: checkPermission,
+    hasMinimumRole: checkMinimumRole,
   };
 
   return (
@@ -305,6 +339,11 @@ export function useCurrentOrganization(): Organization | null {
   return currentOrganization;
 }
 
+export function useUserRole(): 'MEMBER' | 'ADMIN' | 'OWNER' | null {
+  const { userRole } = useAuth();
+  return userRole;
+}
+
 export function useOrganizations(): OrganizationUser[] {
   const { organizations } = useAuth();
   return organizations;
@@ -313,6 +352,28 @@ export function useOrganizations(): OrganizationUser[] {
 export function useAuthError(): string | null {
   const { error } = useAuth();
   return error;
+}
+
+// ===== SIMPLIFIED PERMISSION HOOKS =====
+
+export function useHasPermission(permission: string): boolean {
+  const { hasPermission } = useAuth();
+  return hasPermission(permission);
+}
+
+export function useHasMinimumRole(minimumRole: 'MEMBER' | 'ADMIN' | 'OWNER'): boolean {
+  const { hasMinimumRole } = useAuth();
+  return hasMinimumRole(minimumRole);
+}
+
+export function useIsAdmin(): boolean {
+  const { userRole } = useAuth();
+  return userRole === 'ADMIN' || userRole === 'OWNER';
+}
+
+export function useIsOwner(): boolean {
+  const { userRole } = useAuth();
+  return userRole === 'OWNER';
 }
 
 // ===== MULTI-TENANT HOOKS =====
@@ -336,7 +397,7 @@ export function useIsOrganizationOwner(): boolean {
     org.organizationId === currentOrganization.id
   );
   
-  return userOrg?.isOwner || false;
+  return userOrg?.role === 'OWNER' || false;
 }
 
 export function useAvailableOrganizations(): OrganizationUser[] {
@@ -388,6 +449,27 @@ export function useRequireOrganization(): {
   };
 }
 
+export function useRequireRole(minimumRole: 'MEMBER' | 'ADMIN' | 'OWNER'): {
+  hasRole: boolean;
+  loading: boolean;
+  userRole: 'MEMBER' | 'ADMIN' | 'OWNER' | null;
+} {
+  const { userRole, loading, hasMinimumRole } = useAuth();
+  const hasRole = !loading && hasMinimumRole(minimumRole);
+
+  useEffect(() => {
+    if (!loading && !hasRole) {
+      window.location.href = '/unauthorized';
+    }
+  }, [loading, hasRole]);
+
+  return {
+    hasRole,
+    loading,
+    userRole,
+  };
+}
+
 export function useRedirectIfAuthenticated(redirectTo: string = '/dashboard'): void {
   const { user, loading } = useAuth();
 
@@ -396,22 +478,6 @@ export function useRedirectIfAuthenticated(redirectTo: string = '/dashboard'): v
       window.location.href = redirectTo;
     }
   }, [loading, user, redirectTo]);
-}
-
-// ===== PERMISSION HOOKS (PLACEHOLDER) =====
-
-export function useHasPermission(permission: string): boolean {
-  const { user, currentOrganization } = useAuth();
-  
-  // TODO: Implement proper permission checking based on user roles
-  return user !== null && currentOrganization !== null;
-}
-
-export function useIsAdmin(): boolean {
-  const { user } = useAuth();
-  
-  // TODO: Implement proper admin checking based on user roles
-  return false;
 }
 
 // ===== UTILITY HOOKS =====
@@ -539,6 +605,7 @@ export function useOrganizationSwitcher() {
 interface WithAuthProps {
   fallback?: React.ComponentType;
   requireOrganization?: boolean;
+  minimumRole?: 'MEMBER' | 'ADMIN' | 'OWNER';
 }
 
 export function withAuth<P extends object>(
@@ -550,9 +617,12 @@ export function withAuth<P extends object>(
     const { hasOrganization, loading: orgLoading } = options.requireOrganization 
       ? useRequireOrganization() 
       : { hasOrganization: true, loading: false };
+    const { hasRole, loading: roleLoading } = options.minimumRole
+      ? useRequireRole(options.minimumRole)
+      : { hasRole: true, loading: false };
 
-    const isLoading = loading || orgLoading;
-    const hasAccess = isAuthenticated && hasOrganization;
+    const isLoading = loading || orgLoading || roleLoading;
+    const hasAccess = isAuthenticated && hasOrganization && hasRole;
 
     if (isLoading) {
       return options.fallback ? React.createElement(options.fallback) : React.createElement('div', null, 'Loading...');

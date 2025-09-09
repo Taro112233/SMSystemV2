@@ -1,10 +1,10 @@
-// types/auth.d.ts - CORRECTED VERSION
+// types/auth.d.ts - SIMPLIFIED 3-ROLE SYSTEM
 // InvenStock - Authentication Type Definitions
 
 export interface User {
   id: string;
-  email?: string;             // ✅ Optional ตรงกับ Schema
-  username: string;           // ✅ Required ตรงกับ Schema
+  email?: string;             // Optional ตรงกับ Schema
+  username: string;           // Required ตรงกับ Schema
   firstName: string;
   lastName: string;
   phone?: string;
@@ -34,7 +34,6 @@ export interface Organization {
   timezone: string;
   currency: string;
   allowDepartments: boolean;
-  allowCustomRoles: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,6 +42,7 @@ export interface OrganizationUser {
   id: string;
   organizationId: string;
   userId: string;
+  role: OrganizationRole;     // Simple role assignment
   isOwner: boolean;
   joinedAt: Date;
   lastActiveAt?: Date;
@@ -51,7 +51,7 @@ export interface OrganizationUser {
   user: User;
 }
 
-// ✅ Authentication Requests
+// Authentication Requests
 export interface LoginRequest {
   username: string;           // Primary credential
   password: string;
@@ -68,11 +68,11 @@ export interface LoginResponse {
 }
 
 export interface RegisterRequest {
-  username: string;           // ✅ Required
+  username: string;           // Required
   password: string;
   firstName: string;
   lastName: string;
-  email?: string;             // ✅ Optional
+  email?: string;             // Optional
   phone?: string;
   organizationName?: string;  // Create new org if provided
 }
@@ -86,7 +86,7 @@ export interface RegisterResponse {
   message?: string;
 }
 
-// ✅ Multi-tenant Context
+// Multi-tenant Context
 export interface AuthContextType {
   user: User | null;
   currentOrganization: Organization | null;
@@ -99,7 +99,7 @@ export interface AuthContextType {
   refreshUser: () => Promise<void>;
 }
 
-// ✅ JWT Payload
+// JWT Payload - Simplified
 export interface JWTPayload {
   userId: string;
   username: string;
@@ -107,21 +107,20 @@ export interface JWTPayload {
   firstName: string;
   lastName: string;
   organizationId?: string;    // Current active organization
-  roleId?: string;            // Current role in active org
-  permissions?: string[];     // Current permissions
+  role?: OrganizationRole;    // Simple role in active org
   iat?: number;
   exp?: number;
 }
 
-// ✅ Invitation Interface
+// Invitation Interface - Simplified
 export interface UserInvitation {
   id: string;
   organizationId: string;
   inviterId: string;
   inviteeId?: string;
-  inviteeEmail?: string;      // ✅ Optional
-  inviteeUsername?: string;   // ✅ Optional
-  roleId?: string;
+  inviteeEmail?: string;      // Optional
+  inviteeUsername?: string;   // Optional
+  role: OrganizationRole;     // Simple role assignment
   message?: string;
   status: InvitationStatus;
   expiresAt: Date;
@@ -134,55 +133,14 @@ export interface UserInvitation {
   invitee?: User;
 }
 
-// Role & Permission interfaces
-export interface OrganizationRole {
-  id: string;
-  organizationId: string;
-  name: string;
-  description?: string;
-  color?: ColorTheme;         // ✅ ใช้ enum
-  icon?: IconType;            // ✅ ใช้ enum
-  position: number;
-  isDefault: boolean;
-  isSystemRole: boolean;
-  isActive: boolean;
-  permissions: OrganizationRolePermission[];
-  createdBy: string;
-  updatedBy?: string;
-  createdAt: Date;
-  updatedAt: Date;
+// Simple 3-Role System
+export enum OrganizationRole {
+  MEMBER = 'MEMBER',  // ทำงานทั่วไป เบิก จ่าย แก้สต็อก
+  ADMIN = 'ADMIN',    // Member + CRUD สต็อกการ์ด + สร้าง category + เชิญผู้ใช้
+  OWNER = 'OWNER'     // Admin + CRUD department + จัดการองค์กร
 }
 
-export interface OrganizationRolePermission {
-  id: string;
-  roleId: string;
-  permissionId: string;
-  allowed: boolean;
-  permission: Permission;
-}
-
-export interface Permission {
-  id: string;
-  categoryId: string;
-  name: string;              // "products.create"
-  displayName: string;       // "สร้างสินค้าใหม่"
-  description?: string;
-  action: PermissionAction;
-  resource: string;          // "products"
-  isWildcard: boolean;
-  category: PermissionCategory;
-}
-
-export interface PermissionCategory {
-  id: string;
-  name: string;             // "products"
-  displayName: string;      // "การจัดการสินค้า"
-  description?: string;
-  icon?: string;
-  sortOrder: number;
-}
-
-// ✅ Enums ตรงกับ Prisma Schema
+// Enums ตรงกับ Prisma Schema
 export enum UserStatus {
   PENDING = 'PENDING',
   ACTIVE = 'ACTIVE',
@@ -201,17 +159,6 @@ export enum InvitationStatus {
   ACCEPTED = 'ACCEPTED',
   DECLINED = 'DECLINED',
   EXPIRED = 'EXPIRED'
-}
-
-export enum PermissionAction {
-  CREATE = 'CREATE',
-  READ = 'READ',
-  UPDATE = 'UPDATE',
-  DELETE = 'DELETE',
-  APPROVE = 'APPROVE',
-  MANAGE = 'MANAGE',
-  EXPORT = 'EXPORT',
-  IMPORT = 'IMPORT'
 }
 
 export enum ColorTheme {

@@ -1,9 +1,11 @@
-// lib/auth-server.ts - FIXED VERSION
+// lib/auth-server.ts - SIMPLIFIED 3-ROLE SYSTEM
 // InvenStock - Server-side User Verification Utilities (Next.js 15 Compatible)
 
 import { cookies } from 'next/headers';
 import { verifyToken, JWTUser } from './auth';
 import { prisma } from './prisma';
+
+type OrganizationRole = 'MEMBER' | 'ADMIN' | 'OWNER';
 
 /**
  * Get current user from server-side (for API routes and server components)
@@ -45,8 +47,8 @@ export async function getServerUser(): Promise<JWTUser | null> {
 
     return {
       userId: user.id,
-      email: user.email,
-      username: user.username || undefined, // Convert null to undefined
+      email: user.email || '',
+      username: user.username || undefined,
       firstName: user.firstName,
       lastName: user.lastName,
     };
@@ -78,15 +80,17 @@ export async function isServerAuthenticated(): Promise<boolean> {
 export function getUserFromHeaders(headers: Headers): {
   userId: string;
   email: string;
+  role?: OrganizationRole;
 } | null {
   const userId = headers.get('x-user-id');
   const email = headers.get('x-user-email');
+  const role = headers.get('x-role') as OrganizationRole;
 
   if (!userId || !email) {
     return null;
   }
 
-  return { userId, email };
+  return { userId, email, role };
 }
 
 /**
@@ -103,12 +107,12 @@ export async function requireServerAuth(): Promise<JWTUser> {
 }
 
 /**
- * Get user with organization context
+ * Get user with organization context - SIMPLIFIED
  */
 export async function getServerUserWithOrganization(organizationId?: string): Promise<{
   user: JWTUser;
   organization: any;
-  role: any;
+  role: OrganizationRole | null;
 } | null> {
   const user = await getServerUser();
   
@@ -124,7 +128,7 @@ export async function getServerUserWithOrganization(organizationId?: string): Pr
   }
 
   try {
-    // Get user's organization membership with role
+    // Get user's organization membership with simple role
     const orgUser = await prisma.organizationUser.findFirst({
       where: {
         userId: user.userId,
@@ -149,32 +153,10 @@ export async function getServerUserWithOrganization(organizationId?: string): Pr
       return null;
     }
 
-    // Get user's role in this organization
-    const userRole = await prisma.organizationUserRole.findUnique({
-      where: {
-        organizationId_userId: {
-          organizationId: targetOrgId,
-          userId: user.userId,
-        },
-        isActive: true,
-      },
-      include: {
-        role: {
-          include: {
-            permissions: {
-              include: {
-                permission: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
     return {
       user,
       organization: orgUser.organization,
-      role: userRole?.role || null,
+      role: orgUser.roles as OrganizationRole, // Simple role from OrganizationUser
     };
   } catch (error) {
     console.error('Failed to get user organization context:', error);
@@ -183,48 +165,86 @@ export async function getServerUserWithOrganization(organizationId?: string): Pr
 }
 
 /**
- * Check if user has permission in current organization
+ * Get user's role in organization - SIMPLIFIED
+ */
+export async function getUserRole(
+  userId: string, 
+  organizationId: string
+): Promise<OrganizationRole | null> {
+  try {
+    const orgUser = await prisma.organizationUser.findFirst({
+      where: {
+        userId,
+        organizationId,
+        isActive: true,
+      },
+    });
+
+    return orgUser?.roles as OrganizationRole || null;
+  } catch (error) {
+    console.error('Failed to get user role:', error);
+    return null;
+  }
+}
+
+/**
+ * Check if user has permission - SIMPLIFIED 3-ROLE SYSTEM
  */
 export async function hasPermission(
   permission: string,
-  organizationId?: string
+  organizationId?: string,
+  userId?: string
 ): Promise<boolean> {
-  const context = await getServerUserWithOrganization(organizationId);
-  
-  if (!context || !context.role) {
+  try {
+    const user = userId ? { userId } : await getServerUser();
+    if (!user) return false;
+
+    const orgUser = await prisma.organizationUser.findFirst({
+      where: {
+        userId: user.userId,
+        organizationId,
+        isActive: true,
+      },
+    });
+
+    if (!orgUser) return false;
+
+    const userRole = orgUser.roles as OrganizationRole;
+
+    // Simple role-based permission checking
+    switch (permission) {
+      // MEMBER permissions
+      case 'stocks.read':
+      case 'stocks.adjust':
+      case 'products.read':
+      case 'transfers.create':
+      case 'transfers.receive':
+        return ['MEMBER', 'ADMIN', 'OWNER'].includes(userRole);
+      
+      // ADMIN permissions
+      case 'products.create':
+      case 'products.update':
+      case 'products.delete':
+      case 'categories.create':
+      case 'users.invite':
+      case 'transfers.approve':
+        return ['ADMIN', 'OWNER'].includes(userRole);
+      
+      // OWNER permissions
+      case 'departments.create':
+      case 'departments.update':
+      case 'departments.delete':
+      case 'organization.settings':
+      case 'users.manage':
+        return userRole === 'OWNER';
+      
+      default:
+        return false;
+    }
+  } catch (error) {
+    console.error('Permission check failed:', error);
     return false;
   }
-
-  // Check if user has the specific permission
-  const hasDirectPermission = context.role.permissions.some(
-    (rolePermission: any) => 
-      rolePermission.permission.name === permission && rolePermission.allowed
-  );
-
-  if (hasDirectPermission) {
-    return true;
-  }
-
-  // Check wildcard permissions
-  const [category] = permission.split('.');
-  const wildcardPermission = `${category}.*`;
-  
-  const hasWildcardPermission = context.role.permissions.some(
-    (rolePermission: any) => 
-      rolePermission.permission.name === wildcardPermission && rolePermission.allowed
-  );
-
-  if (hasWildcardPermission) {
-    return true;
-  }
-
-  // Check super admin permission
-  const hasSuperAdminPermission = context.role.permissions.some(
-    (rolePermission: any) => 
-      rolePermission.permission.name === '*' && rolePermission.allowed
-  );
-
-  return hasSuperAdminPermission;
 }
 
 /**
@@ -232,12 +252,56 @@ export async function hasPermission(
  */
 export async function requirePermission(
   permission: string,
-  organizationId?: string
+  organizationId?: string,
+  userId?: string
 ): Promise<void> {
-  const hasAccess = await hasPermission(permission, organizationId);
+  const hasAccess = await hasPermission(permission, organizationId, userId);
   
   if (!hasAccess) {
     throw new Error(`Permission denied: ${permission}`);
+  }
+}
+
+/**
+ * Check if user has minimum role - SIMPLIFIED
+ */
+export async function hasMinimumRole(
+  minimumRole: OrganizationRole,
+  organizationId: string,
+  userId?: string
+): Promise<boolean> {
+  try {
+    const user = userId ? { userId } : await getServerUser();
+    if (!user) return false;
+
+    const userRole = await getUserRole(user.userId, organizationId);
+    if (!userRole) return false;
+
+    const roleHierarchy = {
+      MEMBER: 1,
+      ADMIN: 2,
+      OWNER: 3
+    };
+
+    return roleHierarchy[userRole] >= roleHierarchy[minimumRole];
+  } catch (error) {
+    console.error('Role check failed:', error);
+    return false;
+  }
+}
+
+/**
+ * Require minimum role (throws if not authorized)
+ */
+export async function requireMinimumRole(
+  minimumRole: OrganizationRole,
+  organizationId: string,
+  userId?: string
+): Promise<void> {
+  const hasAccess = await hasMinimumRole(minimumRole, organizationId, userId);
+  
+  if (!hasAccess) {
+    throw new Error(`Insufficient role: requires ${minimumRole} or higher`);
   }
 }
 
@@ -258,7 +322,6 @@ export async function getServerOrganization(organizationId: string): Promise<any
         timezone: true,
         currency: true,
         allowDepartments: true,
-        allowCustomRoles: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -325,5 +388,55 @@ export async function getUserOrganizations(userId: string): Promise<any[]> {
   } catch (error) {
     console.error('Failed to get user organizations:', error);
     return [];
+  }
+}
+
+/**
+ * Check if user is owner of organization
+ */
+export async function isOrganizationOwner(
+  userId: string,
+  organizationId: string
+): Promise<boolean> {
+  try {
+    const orgUser = await prisma.organizationUser.findFirst({
+      where: {
+        userId,
+        organizationId,
+        isActive: true,
+        roles: 'OWNER',
+      },
+    });
+
+    return orgUser !== null;
+  } catch (error) {
+    console.error('Failed to check organization ownership:', error);
+    return false;
+  }
+}
+
+/**
+ * Check if user is admin or owner of organization
+ */
+export async function isOrganizationAdminOrOwner(
+  userId: string,
+  organizationId: string
+): Promise<boolean> {
+  try {
+    const orgUser = await prisma.organizationUser.findFirst({
+      where: {
+        userId,
+        organizationId,
+        isActive: true,
+        roles: {
+          in: ['ADMIN', 'OWNER']
+        },
+      },
+    });
+
+    return orgUser !== null;
+  } catch (error) {
+    console.error('Failed to check admin/owner status:', error);
+    return false;
   }
 }

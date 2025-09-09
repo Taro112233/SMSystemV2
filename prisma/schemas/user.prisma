@@ -26,7 +26,6 @@ model User {
   
   // Relations
   organizationUsers     OrganizationUser[]
-  organizationUserRoles OrganizationUserRole[]
   sentInvitations       UserInvitation[] @relation("InviterUser")
   receivedInvitations   UserInvitation[] @relation("InviteeUser")
   stockTransactions     StockTransaction[]

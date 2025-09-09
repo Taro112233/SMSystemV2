@@ -1,4 +1,4 @@
-// lib/auth.ts - FIXED VERSION
+// lib/auth.ts - SIMPLIFIED 3-ROLE SYSTEM
 // InvenStock - Server-side Authentication Utilities
 
 import { SignJWT, jwtVerify } from 'jose';
@@ -13,15 +13,15 @@ const JWT_EXPIRES_IN = '7d';
 
 // ===== TYPE DEFINITIONS =====
 
-// 🔥 FIXED: ตรงกับ Schema และ types/auth.d.ts
+// Simplified to match 3-Role System
 export interface UserPayload {
   userId: string;
   email: string;
-  username?: string;          // ✅ Optional
+  username?: string;          // Optional
   firstName: string;
   lastName: string;
   organizationId?: string;    // Current active organization
-  roleId?: string;           // Current role in organization
+  role?: 'MEMBER' | 'ADMIN' | 'OWNER';  // Simple role enum
 }
 
 export interface JWTUser extends UserPayload {
@@ -32,7 +32,7 @@ export interface JWTUser extends UserPayload {
 // ===== AUTH ERROR CONSTANTS =====
 
 export const AuthError = {
-  INVALID_CREDENTIALS: 'Invalid email or password',  // ✅ เปลี่ยนจาก username
+  INVALID_CREDENTIALS: 'Invalid username or password',
   USER_NOT_FOUND: 'User not found',
   USER_NOT_APPROVED: 'User account pending approval',
   USER_SUSPENDED: 'User account suspended',
@@ -58,7 +58,7 @@ export async function createToken(user: UserPayload): Promise<string> {
   // Add optional fields only if they exist
   if (user.username) payload.username = user.username;
   if (user.organizationId) payload.organizationId = user.organizationId;
-  if (user.roleId) payload.roleId = user.roleId;
+  if (user.role) payload.role = user.role;
 
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
@@ -86,7 +86,7 @@ export async function verifyToken(token: string): Promise<JWTUser | null> {
     // Add optional fields only if they exist
     if (payload.username) result.username = payload.username as string;
     if (payload.organizationId) result.organizationId = payload.organizationId as string;
-    if (payload.roleId) result.roleId = payload.roleId as string;
+    if (payload.role) result.role = payload.role as 'MEMBER' | 'ADMIN' | 'OWNER';
 
     return result;
   } catch (error) {
@@ -101,12 +101,12 @@ export async function verifyToken(token: string): Promise<JWTUser | null> {
 export async function createTokenWithOrganization(
   user: UserPayload,
   organizationId: string,
-  roleId?: string
+  role?: 'MEMBER' | 'ADMIN' | 'OWNER'
 ): Promise<string> {
   return createToken({
     ...user,
     organizationId,
-    roleId
+    role
   });
 }
 
@@ -151,9 +151,13 @@ export function getCookieOptions() {
 }
 
 /**
- * Convert user object to JWT payload (updated for Schema)
+ * Convert user object to JWT payload (simplified for 3-Role System)
  */
-export function userToPayload(user: any, organizationId?: string, roleId?: string): UserPayload {
+export function userToPayload(
+  user: any, 
+  organizationId?: string, 
+  role?: 'MEMBER' | 'ADMIN' | 'OWNER'
+): UserPayload {
   const payload: UserPayload = {
     userId: user.id,
     email: user.email,
@@ -163,7 +167,7 @@ export function userToPayload(user: any, organizationId?: string, roleId?: strin
 
   if (user.username) payload.username = user.username;
   if (organizationId) payload.organizationId = organizationId;
-  if (roleId) payload.roleId = roleId;
+  if (role) payload.role = role;
 
   return payload;
 }
@@ -219,6 +223,56 @@ export function isValidUserStatus(status: string): boolean {
   return ['PENDING', 'ACTIVE', 'SUSPENDED', 'INACTIVE'].includes(status);
 }
 
+// ===== SIMPLE PERMISSION CHECKING =====
+
+export function hasPermission(
+  userRole: 'MEMBER' | 'ADMIN' | 'OWNER',
+  permission: string
+): boolean {
+  switch (permission) {
+    // MEMBER permissions
+    case 'stocks.read':
+    case 'stocks.adjust':
+    case 'products.read':
+    case 'transfers.create':
+    case 'transfers.receive':
+      return ['MEMBER', 'ADMIN', 'OWNER'].includes(userRole);
+    
+    // ADMIN permissions
+    case 'products.create':
+    case 'products.update':
+    case 'products.delete':
+    case 'categories.create':
+    case 'users.invite':
+    case 'transfers.approve':
+      return ['ADMIN', 'OWNER'].includes(userRole);
+    
+    // OWNER permissions
+    case 'departments.create':
+    case 'departments.update':
+    case 'departments.delete':
+    case 'organization.settings':
+    case 'users.manage':
+      return userRole === 'OWNER';
+    
+    default:
+      return false;
+  }
+}
+
+export function requireRole(
+  userRole: 'MEMBER' | 'ADMIN' | 'OWNER',
+  minimumRole: 'MEMBER' | 'ADMIN' | 'OWNER'
+): boolean {
+  const roleHierarchy = {
+    MEMBER: 1,
+    ADMIN: 2,
+    OWNER: 3
+  };
+  
+  return roleHierarchy[userRole] >= roleHierarchy[minimumRole];
+}
+
 // ===== RATE LIMITING =====
 
 export class RateLimiter {
@@ -259,32 +313,6 @@ export class RateLimiter {
 }
 
 export const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
-
-// ===== ORGANIZATION HELPERS =====
-
-/**
- * Check if user has access to organization
- */
-export async function userHasOrganizationAccess(
-  userId: string, 
-  organizationId: string
-): Promise<boolean> {
-  // This would typically check database
-  // Placeholder implementation
-  return true;
-}
-
-/**
- * Get user's role in organization
- */
-export async function getUserOrganizationRole(
-  userId: string, 
-  organizationId: string
-): Promise<string | null> {
-  // This would typically query the database
-  // Placeholder implementation
-  return null;
-}
 
 // ===== REFRESH TOKEN FUNCTIONS =====
 

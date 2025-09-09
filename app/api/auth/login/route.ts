@@ -1,4 +1,4 @@
-// app/api/auth/login/route.ts - WORKING VERSION
+// app/api/auth/login/route.ts - FIXED FOR 3-ROLE SYSTEM
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, createToken, getCookieOptions, userToPayload } from '@/lib/auth';
@@ -70,21 +70,13 @@ export async function POST(request: NextRequest) {
 
     if (userOrganizations.length > 0) {
       const defaultOrg = userOrganizations[0];
-      const userRole = await prisma.organizationUserRole.findUnique({
-        where: {
-          organizationId_userId: {
-            organizationId: defaultOrg.organizationId,
-            userId: user.id
-          },
-          isActive: true
-        },
-        select: { roleId: true }
-      });
+      // Use simple role from OrganizationUser instead of complex role system
+      const userRole = defaultOrg.roles; // This is the simple 'MEMBER' | 'ADMIN' | 'OWNER'
 
       token = await createToken({
         ...userPayload,
         organizationId: defaultOrg.organizationId,
-        roleId: userRole?.roleId
+        role: userRole as 'MEMBER' | 'ADMIN' | 'OWNER'
       });
     } else {
       token = await createToken(userPayload);

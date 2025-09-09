@@ -1,4 +1,4 @@
-// app/utils/auth-client.ts - COMPLETE VERSION
+// app/utils/auth-client.ts - SIMPLIFIED 3-ROLE SYSTEM
 // InvenStock - Username-based Authentication Client
 
 export interface User {
@@ -32,6 +32,7 @@ export interface OrganizationUser {
   id: string;
   organizationId: string;
   userId: string;
+  role: 'MEMBER' | 'ADMIN' | 'OWNER';  // Simple role enum
   isOwner: boolean;
   joinedAt: Date;
   isActive: boolean;
@@ -149,7 +150,7 @@ export async function getCurrentUser(): Promise<{
 
 export async function switchOrganization(organizationId: string): Promise<{
   organization: Organization;
-  permissions: string[];
+  role: 'MEMBER' | 'ADMIN' | 'OWNER';  // Simple role instead of permissions array
 }> {
   const response = await fetch('/api/auth/switch-organization', {
     method: 'POST',
@@ -327,4 +328,54 @@ export function isUserActive(user: User): boolean {
 
 export function getUserInitials(user: User): string {
   return `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
+}
+
+// ===== SIMPLE ROLE HELPERS =====
+
+export function hasPermission(
+  userRole: 'MEMBER' | 'ADMIN' | 'OWNER',
+  permission: string
+): boolean {
+  switch (permission) {
+    // MEMBER permissions
+    case 'stocks.read':
+    case 'stocks.adjust':
+    case 'products.read':
+    case 'transfers.create':
+    case 'transfers.receive':
+      return ['MEMBER', 'ADMIN', 'OWNER'].includes(userRole);
+    
+    // ADMIN permissions
+    case 'products.create':
+    case 'products.update':
+    case 'products.delete':
+    case 'categories.create':
+    case 'users.invite':
+    case 'transfers.approve':
+      return ['ADMIN', 'OWNER'].includes(userRole);
+    
+    // OWNER permissions
+    case 'departments.create':
+    case 'departments.update':
+    case 'departments.delete':
+    case 'organization.settings':
+    case 'users.manage':
+      return userRole === 'OWNER';
+    
+    default:
+      return false;
+  }
+}
+
+export function isMinimumRole(
+  userRole: 'MEMBER' | 'ADMIN' | 'OWNER',
+  minimumRole: 'MEMBER' | 'ADMIN' | 'OWNER'
+): boolean {
+  const roleHierarchy = {
+    MEMBER: 1,
+    ADMIN: 2,
+    OWNER: 3
+  };
+  
+  return roleHierarchy[userRole] >= roleHierarchy[minimumRole];
 }

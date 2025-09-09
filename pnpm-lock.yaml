@@ -18,8 +18,8 @@ importers:
         specifier: ^5.1.1
         version: 5.2.1(react-hook-form@7.62.0(react@19.1.0))
       '@prisma/client':
-        specifier: 6.13.0
-        version: 6.13.0(prisma@6.15.0(typescript@5.9.2))(typescript@5.9.2)
+        specifier: 6.15.0
+        version: 6.15.0(prisma@6.15.0(typescript@5.9.2))(typescript@5.9.2)
       '@radix-ui/react-accordion':
         specifier: ^1.2.11
         version: 1.2.12(@types/react-dom@19.1.9(@types/react@19.1.12))(@types/react@19.1.12)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -217,7 +217,7 @@ importers:
         specifier: 15.4.2
         version: 15.4.2(eslint@9.35.0(jiti@2.5.1))(typescript@5.9.2)
       prisma:
-        specifier: ^6.12.0
+        specifier: ^6.15.0
         version: 6.15.0(typescript@5.9.2)
       tailwindcss:
         specifier: ^4
@@ -799,8 +799,8 @@ packages:
   '@panva/hkdf@1.2.1':
     resolution: {integrity: sha512-6oclG6Y3PiDFcoyk8srjLfVKyMfVCKJ27JwNPViuXziFpmdz+MZnZN/aKY0JGXgYuO/VghU0jcOAZgWXZ1Dmrw==}
 
-  '@prisma/client@6.13.0':
-    resolution: {integrity: sha512-8m2+I3dQovkV8CkDMluiwEV1TxV9EXdT6xaCz39O6jYw7mkf5gwfmi+cL4LJsEPwz5tG7sreBwkRpEMJedGYUQ==}
+  '@prisma/client@6.15.0':
+    resolution: {integrity: sha512-wR2LXUbOH4cL/WToatI/Y2c7uzni76oNFND7+23ypLllBmIS8e3ZHhO+nud9iXSXKFt1SoM3fTZvHawg63emZw==}
     engines: {node: '>=18.18'}
     peerDependencies:
       prisma: '*'
@@ -4060,7 +4060,7 @@ snapshots:
 
   '@panva/hkdf@1.2.1': {}
 
-  '@prisma/client@6.13.0(prisma@6.15.0(typescript@5.9.2))(typescript@5.9.2)':
+  '@prisma/client@6.15.0(prisma@6.15.0(typescript@5.9.2))(typescript@5.9.2)':
     optionalDependencies:
       prisma: 6.15.0(typescript@5.9.2)
       typescript: 5.9.2
